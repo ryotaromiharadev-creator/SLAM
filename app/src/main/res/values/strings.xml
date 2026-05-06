@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">SLAM_For_ARCore</string>
+    <string name="btn_view_3d_map">3Dマップを表示</string>
+    <string name="btn_clear">クリア</string>
+    <string name="btn_refresh">更新</string>
+    <string name="state_initializing">初期化中…</string>
+    <string name="state_tracking">トラッキング中</string>
+    <string name="state_lost">トラッキング喪失</string>
+    <string name="viewer_hint">ドラッグ: 回転　ピンチ: ズーム</string>
+    <string name="error_no_arcore">ARCoreがサポートされていません</string>
+    <string name="label_sensitivity">感度</string>
+    <string name="sensitivity_low">低</string>
+    <string name="sensitivity_mid">中</string>
+    <string name="sensitivity_high">高</string>
+    <string name="sensitivity_ultra">最高</string>
+</resources>
