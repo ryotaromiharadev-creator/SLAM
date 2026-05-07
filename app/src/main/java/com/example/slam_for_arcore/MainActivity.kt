@@ -5,7 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -28,14 +30,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTrackingState: TextView
     private lateinit var tvPointCount: TextView
     private lateinit var tvSensitivityValue: TextView
+    private lateinit var navHintOverlay: LinearLayout
+    private lateinit var tvNavArrow: TextView
+    private lateinit var tvNavMessage: TextView
 
     private var session: Session? = null
     private var installRequested = false
 
     companion object {
         private const val CAMERA_PERMISSION_REQUEST = 0
-
-        // SeekBar の progress → (samplingStep, keyframeInterval, label文字列リソース) 対応
         private val SENSITIVITY_LEVELS = arrayOf(
             Triple(8, 8, R.string.sensitivity_low),
             Triple(4, 5, R.string.sensitivity_mid),
@@ -45,26 +48,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // エッジツーエッジ描画を有効にしてナビゲーションバー/ステータスバーの
-        // 高さを ViewCompat のインセット API で取得できるようにする
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        tvTrackingState = findViewById(R.id.tv_tracking_state)
-        tvPointCount = findViewById(R.id.tv_point_count)
+        tvTrackingState  = findViewById(R.id.tv_tracking_state)
+        tvPointCount     = findViewById(R.id.tv_point_count)
         tvSensitivityValue = findViewById(R.id.tv_sensitivity_value)
-        glSurfaceView = findViewById(R.id.gl_surface_view)
+        navHintOverlay   = findViewById(R.id.nav_hint_overlay)
+        tvNavArrow       = findViewById(R.id.tv_nav_arrow)
+        tvNavMessage     = findViewById(R.id.tv_nav_message)
+        glSurfaceView    = findViewById(R.id.gl_surface_view)
 
         renderer = SlamRenderer()
+
+        // トラッキング状態コールバック
         renderer.onTrackingState = { state, count ->
             runOnUiThread {
                 tvTrackingState.text = when (state) {
                     TrackingState.TRACKING -> getString(R.string.state_tracking)
-                    TrackingState.PAUSED -> "トラッキング一時停止"
-                    TrackingState.STOPPED -> getString(R.string.state_lost)
+                    TrackingState.PAUSED   -> "トラッキング一時停止"
+                    TrackingState.STOPPED  -> getString(R.string.state_lost)
                 }
                 tvPointCount.text = "Points: $count"
+            }
+        }
+
+        // ナビゲーションヒントコールバック
+        renderer.onNavigationHint = { hint ->
+            runOnUiThread {
+                tvNavArrow.text   = hint.arrowChar
+                tvNavMessage.text = hint.message
+                navHintOverlay.visibility =
+                    if (hint.coveragePercent > 0) View.VISIBLE else View.GONE
             }
         }
 
@@ -73,17 +89,17 @@ class MainActivity : AppCompatActivity() {
         glSurfaceView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
 
         // ─── 感度 SeekBar ────────────────────────────────────────────────
-        val seekSensitivity = findViewById<SeekBar>(R.id.seek_sensitivity)
-        seekSensitivity.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                val (step, interval, labelRes) = SENSITIVITY_LEVELS[progress]
-                renderer.samplingStep = step
-                renderer.keyframeInterval = interval
-                tvSensitivityValue.text = getString(labelRes)
-            }
-            override fun onStartTrackingTouch(bar: SeekBar) {}
-            override fun onStopTrackingTouch(bar: SeekBar) {}
-        })
+        findViewById<SeekBar>(R.id.seek_sensitivity)
+            .setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
+                    val (step, interval, labelRes) = SENSITIVITY_LEVELS[progress]
+                    renderer.samplingStep = step
+                    renderer.keyframeInterval = interval
+                    tvSensitivityValue.text = getString(labelRes)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) {}
+            })
 
         // ─── ボタン ──────────────────────────────────────────────────────
         findViewById<Button>(R.id.btn_view_map).setOnClickListener {
@@ -91,53 +107,41 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btn_clear).setOnClickListener {
             VisualMapManager.clear()
+            CoverageAnalyzer.clear()
             tvPointCount.text = "Points: 0"
+            navHintOverlay.visibility = View.GONE
         }
 
-        // ─── ウィンドウインセット（ナビゲーションバー・ステータスバー対応） ─────
+        // ─── ウィンドウインセット ─────────────────────────────────────────
         val dp8 = (8 * resources.displayMetrics.density).toInt()
         val dp6 = (6 * resources.displayMetrics.density).toInt()
 
-        // 下部バー: ナビゲーションバーの高さ分だけ padding を追加
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.bottom_bar)) { view, insets ->
-            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-            view.updatePadding(bottom = navBottom + dp8)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.bottom_bar)) { v, insets ->
+            v.updatePadding(bottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom + dp8)
             insets
         }
-
-        // 上部バー: ステータスバーの高さ分だけ padding を追加
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.top_bar)) { view, insets ->
-            val statusTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            view.updatePadding(top = statusTop + dp6)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.top_bar)) { v, insets ->
+            v.updatePadding(top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top + dp6)
             insets
         }
     }
 
     override fun onResume() {
         super.onResume()
-
-        if (!hasCameraPermission()) {
-            requestCameraPermission()
-            return
-        }
+        if (!hasCameraPermission()) { requestCameraPermission(); return }
 
         try {
             when (ArCoreApk.getInstance().requestInstall(this, !installRequested)) {
-                ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
-                    installRequested = true
-                    return
-                }
+                ArCoreApk.InstallStatus.INSTALL_REQUESTED -> { installRequested = true; return }
                 ArCoreApk.InstallStatus.INSTALLED -> Unit
             }
-
             if (session == null) {
                 session = Session(this).also { sess ->
-                    val config = Config(sess).apply {
-                        depthMode = Config.DepthMode.AUTOMATIC
-                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                        focusMode = Config.FocusMode.AUTO
-                    }
-                    sess.configure(config)
+                    sess.configure(Config(sess).apply {
+                        depthMode   = Config.DepthMode.AUTOMATIC
+                        updateMode  = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                        focusMode   = Config.FocusMode.AUTO
+                    })
                 }
             }
         } catch (e: Exception) {
@@ -145,10 +149,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        session?.let {
-            renderer.setSession(it)
-            it.resume()
-        }
+        session?.let { renderer.setSession(it); it.resume() }
         glSurfaceView.onResume()
     }
 
@@ -165,9 +166,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == CAMERA_PERMISSION_REQUEST &&

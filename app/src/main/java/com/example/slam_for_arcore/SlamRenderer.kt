@@ -25,6 +25,7 @@ class SlamRenderer : android.opengl.GLSurfaceView.Renderer {
     private var pcProgram = -1
 
     var onTrackingState: ((TrackingState, Int) -> Unit)? = null
+    var onNavigationHint: ((CoverageAnalyzer.NavHint) -> Unit)? = null
 
     /** サンプリングステップ: 1=最密, 8=最粗。UIから変更可能。 */
     @Volatile var samplingStep: Int = 4
@@ -112,7 +113,16 @@ class SlamRenderer : android.opengl.GLSurfaceView.Renderer {
             frameCounter++
             if (frameCounter % keyframeInterval == 0) {
                 val pts = extractColoredPixels(frame, camera)
-                if (pts.isNotEmpty()) VisualMapManager.addColoredPoints(pts)
+                if (pts.isNotEmpty()) {
+                    VisualMapManager.addColoredPoints(pts)
+                    CoverageAnalyzer.recordKeyframe(pts)
+                }
+            }
+
+            // 10フレームに1回ナビゲーションヒントを更新
+            if (frameCounter % 10 == 0) {
+                CoverageAnalyzer.updateHint(camera.pose)
+                onNavigationHint?.invoke(CoverageAnalyzer.getHint())
             }
 
             onTrackingState?.invoke(camera.trackingState, VisualMapManager.getPointCount())
@@ -189,12 +199,13 @@ class SlamRenderer : android.opengl.GLSurfaceView.Renderer {
 
                     val depM = depMm / 1000f
 
-                    // 逆投影: 深度画素 → ARCoreカメラ空間
+                    // 逆投影: 深度画素 → ARCoreカメラ空間 (CV慣習: X右, Y下増加, Z前方正)
+                    // camera.pose.transformPoint() がこのCV空間からworld空間へ変換する
                     val Xc = (du - dcx) * depM / dfx
-                    val Yc = -(dv - dcy) * depM / dfy  // 画像Y (下増加) → ARCore Y (上増加)
-                    val Zc = -depM                       // 前方 = ARCore -Z
+                    val Yc = (dv - dcy) * depM / dfy   // 符号反転なし: CV慣習でY下向き正
+                    val Zc = depM                        // 符号反転なし: CV慣習でZ前方正
 
-                    // カメラ空間 → ワールド空間
+                    // カメラ空間 (CV) → ワールド空間
                     val w = pose.transformPoint(floatArrayOf(Xc, Yc, Zc))
 
                     // カメラ画像から画素色を取得 (YUV → RGB)

@@ -38,6 +38,41 @@
             android:textSize="13sp" />
     </LinearLayout>
 
+    <!-- ナビゲーションヒントオーバーレイ（画面中央、カバレッジ計算後に表示） -->
+    <LinearLayout
+        android:id="@+id/nav_hint_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal|top"
+        android:layout_marginTop="110dp"
+        android:background="#CC000000"
+        android:orientation="vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone">
+
+        <!-- 方向矢印（Unicode） -->
+        <TextView
+            android:id="@+id/tv_nav_arrow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="↑"
+            android:textColor="#FFE500"
+            android:textSize="52sp"
+            android:lineHeight="52sp" />
+
+        <!-- ヒントメッセージ -->
+        <TextView
+            android:id="@+id/tv_nav_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
     <!-- 下部コントロール（ナビゲーションバーの高さは ViewCompat でパディング調整） -->
     <LinearLayout
         android:id="@+id/bottom_bar"
